@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medicure Report Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            /* Changed blue top border to green */
+            border-top: 5px solid #39d353;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-4xl w-full m-4">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Medicure Report Analyzer</h1>
+            <p class="text-gray-500 mt-2">Upload a patient's medical report PDF to get an AI-powered summary.</p>
+        </div>
+
+        <form id="upload-form" class="mb-8">
+            <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-10 text-center cursor-pointer hover:border-green-500 transition-colors">
+                <input type="file" id="file-input" name="file" class="hidden" accept=".pdf">
+                <p id="drop-zone-text" class="text-gray-500">Drag & drop your PDF here, or <span class="text-green-600 font-semibold">click to select a file</span></p>
+            </div>
+            <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg mt-6 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105">
+                Analyze Report
+            </button>
+        </form>
+
+        <div id="loader" class="hidden flex justify-center items-center my-4">
+            <div class="loader"></div>
+            <p class="ml-4 text-gray-600">Analyzing your report, please wait...</p>
+        </div>
+
+        <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+        </div>
+
+        <div id="results" class="hidden">
+            <!-- Centering the single summary column -->
+            <div class="flex justify-center">
+                <!-- AI Summary Section -->
+                <div class="bg-gray-50 p-6 rounded-lg w-full md:w-3/4">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">AI Summary</h2><strong><p>Disclaimer:This an AI generated summary.Please contact your doctor.</p></strong>
+                    <pre id="summary-output" class="text-gray-700 whitespace-pre-wrap font-sans"></pre>
+                </div>
+
+                <!-- 
+                
+                The Full Extracted Text section below has been commented out as requested.
+
+                <div class="bg-gray-50 p-6 rounded-lg">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Full Extracted Text</h2>
+                    <pre id="text-output" class="text-gray-600 whitespace-pre-wrap font-sans text-sm h-96 overflow-y-auto"></pre>
+                </div> 
+                
+                -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadForm = document.getElementById('upload-form');
+        const fileInput = document.getElementById('file-input');
+        const dropZone = document.getElementById('drop-zone');
+        const dropZoneText = document.getElementById('drop-zone-text');
+        const loader = document.getElementById('loader');
+        const resultsDiv = document.getElementById('results');
+        const errorMessageDiv = document.getElementById('error-message');
+        const summaryOutput = document.getElementById('summary-output');
+        // The textOutput variable is no longer used but is kept here to prevent script errors
+        const textOutput = document.getElementById('text-output');
+
+        // Handle file selection and drag-and-drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                dropZoneText.textContent = `File selected: ${fileInput.files[0].name}`;
+                dropZone.classList.add('border-green-500');
+            }
+        });
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        dropZone.addEventListener('dragenter', () => dropZone.classList.add('bg-gray-100'));
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('bg-gray-100'));
+        dropZone.addEventListener('drop', (e) => {
+            dropZone.classList.remove('bg-gray-100');
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                dropZoneText.textContent = `File selected: ${files[0].name}`;
+                 dropZone.classList.add('border-green-500');
+            }
+        });
+
+        // Handle form submission
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            if (fileInput.files.length === 0) {
+                showError('Please select a PDF file to upload.');
+                return;
+            }
+            formData.append('file', fileInput.files[0]);
+
+            // Reset UI
+            loader.classList.remove('hidden');
+            resultsDiv.classList.add('hidden');
+            errorMessageDiv.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+                loader.classList.add('hidden');
+
+                if (data.error) {
+                    showError(`An error occurred: ${data.error}`);
+                } else {
+                    summaryOutput.textContent = data.summary;
+                    // We no longer need to display the full text
+                    // textOutput.textContent = data.extracted_text;
+                    resultsDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                loader.classList.add('hidden');
+                showError('An unexpected network error occurred. Please check the server.');
+            }
+        });
+
+        function showError(message) {
+            errorMessageDiv.textContent = message;
+            errorMessageDiv.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
+
